@@ -1,0 +1,74 @@
+library(ggplot2)
+library(sp)
+library(raster)
+library(plot.matrix)
+library(RColorBrewer)
+library(ncdf4)
+library(lubridate)
+library(zoo)
+library(dplyr)
+setwd("/DATA2/ALL_DATA_FOR_USERS/imd_forcing_1951_2022_4434/")
+TIME_DAILY=seq(as.Date("1951-01-01"),as.Date("2022-12-31"),by=1)
+g1=read.table("data_22.125_71.875")
+g2=read.table("data_22.125_72.125")
+g3=read.table("data_22.375_71.875")
+g4=read.table("data_22.375_72.125")
+prec=data.frame(Date = numeric(0), P = numeric(0))
+for (i in 1:26298) {
+  
+  value=c(g1$V1[i],g2$V1[i],g3$V1[i],g4$V1[i])
+  V4=mean(value,na.rm=T)
+  prec=rbind(prec,data.frame(Date=TIME_DAILY[i],P=V4))
+  
+}
+setwd("/DATA/myspace/abbascode/workstation/")
+write.csv(prec,"ARAE AVRAGE PRECP DHOLORA CATCHMENT.csv",row.names = F)
+
+
+# Define window size for storm event (3 days in this case)
+window_size <- 3
+
+# Calculate rolling sum for maximum storm event over 2019
+year_2019_data <- prec$P[which(TIME_DAILY == "2019-01-01"):which(TIME_DAILY == "2019-12-31")]
+rolling_sums <- rollapply(year_2019_data, width = window_size, FUN = sum, align = "left", fill = NA)
+
+# Identify maximum storm event and its starting day
+max_storm_event <- max(rolling_sums, na.rm = TRUE)
+max_storm_index <- which.max(rolling_sums)
+
+# Get start and end dates of the maximum storm event
+start_date <- prec$Date[which(TIME_DAILY == "2019-01-01") + max_storm_index - 1]
+end_date <- prec$Date[which(TIME_DAILY == "2019-01-01") + max_storm_index + window_size - 2]
+cat("The maximum storm event is:", max_storm_event, "mm over", window_size, "days\n")
+cat("It starts on day:", start_date, "and ends on day:", end_date, "\n")
+
+# Calculate cumulative rainfall for 2019
+cumulative_rainfall <- cumsum(year_2019_data)
+
+# Create a dataframe for plotting
+plot_data <- data.frame(
+  Date = prec$Date[which(TIME_DAILY == "2019-01-01"):which(TIME_DAILY == "2019-12-31")],
+  CumulativeRainfall = cumulative_rainfall
+)
+
+# Add a column to identify the maximum storm event period for coloring
+plot_data$Highlight <- ifelse(
+  plot_data$Date >= start_date & plot_data$Date <= end_date,
+  "Max Storm Event", "Other Days"
+)
+
+# Plot with ggplot2
+ggplot(plot_data, aes(x = Date, y = CumulativeRainfall)) +
+  geom_line(color = "blue") +
+  geom_point(data = subset(plot_data, Highlight == "Max Storm Event"), aes(color = Highlight), size = 2) +
+  geom_line(data = subset(plot_data, Highlight == "Max Storm Event"), color = "red", size = 1.2) +
+  scale_color_manual(values = c("Max Storm Event" = "red", "Other Days" = "blue")) +
+  labs(
+    title = "Mass Curve of Rainfall for 2019",
+    x = "Date",
+    y = "Cumulative Rainfall (mm)"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  geom_text(aes(label = ifelse(Highlight == "Max Storm Event", round(CumulativeRainfall, 1), "")), 
+            hjust = -0.3, vjust = -0.5, color = "red", size = 3)
